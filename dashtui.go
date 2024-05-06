@@ -126,51 +126,12 @@ func (b *Builder) Build() (*DashTUI, error) {
 					plotData := make([][]float64, 1)
 					plotData[0] = make([]float64, len(data))
 
-					points := make([]float64, numPoints)
-
-					now := time.Now()
-					endTime := now
-					startTime := endTime.Add(-timeWindow)
-
-					timeStep := timeWindow / time.Duration(numPoints)
-					stepStart := startTime
-					stepEnd := startTime.Add(timeStep)
-					lastDatum := data[len(data)-1]
-
-					if lastDatum.timestamp.Before(stepEnd) {
-						for i := range points {
-							points[i] = lastDatum.value
-						}
-					} else {
-
-						lastValue := 0.0
-						for i := range points {
-
-							found := false
-
-							for _, d := range data {
-								if d.timestamp.After(stepStart) && d.timestamp.Before(stepEnd) {
-									points[i] = d.value
-									lastValue = d.value
-									found = true
-									break
-								}
-							}
-
-							if !found {
-								points[i] = lastValue
-							}
-
-							stepStart = stepEnd
-							stepEnd = stepStart.Add(timeStep)
-						}
-					}
+					points := getPoints(data, numPoints, timeWindow)
 
 					plotData[0] = points
 					c.SetData(plotData)
 
 					app.Draw()
-
 				}
 			}
 		}
@@ -220,6 +181,60 @@ func calcAxisWidth(data []datum) int {
 	} else {
 		return 4
 	}
+}
+
+func getPoints(data []datum, numPoints int, timeWindow time.Duration) []float64 {
+	var points []float64
+
+	now := time.Now()
+	endTime := now
+	startTime := endTime.Add(-timeWindow)
+
+	lastDatum := data[len(data)-1]
+
+	if lastDatum.timestamp.Before(startTime) {
+		points = make([]float64, len(data))
+		for i := range points {
+			points[i] = lastDatum.value
+		}
+	} else {
+		points = samplePoints(data, numPoints, timeWindow, startTime)
+	}
+
+	return points
+}
+
+func samplePoints(data []datum, numPoints int, timeWindow time.Duration, startTime time.Time) []float64 {
+
+	points := make([]float64, len(data))
+
+	timeStep := timeWindow / time.Duration(numPoints)
+	stepStart := startTime
+	stepEnd := startTime.Add(timeStep)
+
+	lastValue := 0.0
+	for i := range points {
+
+		found := false
+
+		for _, d := range data {
+			if d.timestamp.After(stepStart) && d.timestamp.Before(stepEnd) {
+				points[i] = d.value
+				lastValue = d.value
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			points[i] = lastValue
+		}
+
+		stepStart = stepEnd
+		stepEnd = stepStart.Add(timeStep)
+	}
+
+	return points
 }
 
 //stdoutR, stdoutW, err := os.Pipe()
