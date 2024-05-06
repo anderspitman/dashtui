@@ -3,6 +3,7 @@ package dashtui
 import (
 	"log"
 	"os"
+	"time"
 
 	//"github.com/gdamore/tcell/v2"
 	"github.com/navidys/tvxwidgets"
@@ -20,6 +21,11 @@ type DashTUI struct {
 type item struct {
 	id    string
 	value float64
+}
+
+type datum struct {
+	value     float64
+	timestamp time.Time
 }
 
 func NewBuilder() *Builder {
@@ -58,53 +64,115 @@ func (b *Builder) Build() (*DashTUI, error) {
 
 	layout.SetFullScreen(true)
 
-	data := make(map[string][]float64)
+	allData := make(map[string][]datum)
 	charts := make(map[string]*tvxwidgets.Plot)
 
 	maxLen := 256
+	timeWindow := 10 * time.Second
+
+	ticker := time.NewTicker(100 * time.Millisecond)
 
 	queue := make(chan item)
 	go func() {
 		for {
-			it := <-queue
+			select {
+			case it := <-queue:
 
-			d, ok := data[it.id]
-			if !ok {
-				d = make([]float64, maxLen)
+				now := time.Now()
+
+				data, ok := allData[it.id]
+				if !ok {
+					data = make([]datum, maxLen)
+
+					for i, _ := range data {
+						data[i] = datum{
+							value:     0,
+							timestamp: now,
+						}
+					}
+				}
+
+				data = append(data, datum{
+					value:     it.value,
+					timestamp: now,
+				})
+				if len(data) > maxLen {
+					data = data[len(data)-maxLen:]
+				}
+
+				allData[it.id] = data
+			case <-ticker.C:
+				for id, data := range allData {
+					c, exists := charts[id]
+					if !exists {
+						c = tvxwidgets.NewPlot()
+
+						c.SetTitle(id)
+						c.SetBorder(true)
+						c.SetMarker(tvxwidgets.PlotMarkerBraille)
+						c.SetDrawXAxisLabel(false)
+
+						layout.AddItem(c, 0, 1, true)
+						app.Draw()
+
+						charts[id] = c
+					}
+
+					_, _, width, _ := c.GetInnerRect()
+
+					axisWidth := calcAxisWidth(data)
+					numPoints := width - axisWidth
+
+					plotData := make([][]float64, 1)
+					plotData[0] = make([]float64, len(data))
+
+					points := make([]float64, numPoints)
+
+					now := time.Now()
+					endTime := now
+					startTime := endTime.Add(-timeWindow)
+
+					timeStep := timeWindow / time.Duration(numPoints)
+					stepStart := startTime
+					stepEnd := startTime.Add(timeStep)
+					lastDatum := data[len(data)-1]
+
+					if lastDatum.timestamp.Before(stepEnd) {
+						for i := range points {
+							points[i] = lastDatum.value
+						}
+					} else {
+
+						lastValue := 0.0
+						for i := range points {
+
+							found := false
+
+							for _, d := range data {
+								if d.timestamp.After(stepStart) && d.timestamp.Before(stepEnd) {
+									points[i] = d.value
+									lastValue = d.value
+									found = true
+									break
+								}
+							}
+
+							if !found {
+								points[i] = lastValue
+							}
+
+							stepStart = stepEnd
+							stepEnd = stepStart.Add(timeStep)
+						}
+					}
+
+					plotData[0] = points
+					c.SetData(plotData)
+
+					app.Draw()
+
+				}
 			}
-
-			d = append(d, it.value)
-			if len(d) > maxLen {
-				d = d[len(d)-maxLen:]
-			}
-
-			data[it.id] = d
-
-			axisWidth := calcAxisWidth(d)
-
-			c, ok := charts[it.id]
-			if !ok {
-				c = tvxwidgets.NewPlot()
-
-				c.SetTitle(it.id)
-				c.SetBorder(true)
-				c.SetMarker(tvxwidgets.PlotMarkerBraille)
-				c.SetDrawXAxisLabel(false)
-
-				layout.AddItem(c, 0, 1, true)
-				app.Draw()
-
-				charts[it.id] = c
-			}
-
-			_, _, width, _ := c.GetInnerRect()
-
-			dat := make([][]float64, 1)
-			dat[0] = d[len(d)-width+axisWidth:]
-
-			c.SetData(dat)
-
-			app.Draw()
 		}
 	}()
 
@@ -137,11 +205,11 @@ func openLogFile(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 }
 
-func calcAxisWidth(data []float64) int {
+func calcAxisWidth(data []datum) int {
 	max := 0.0
 	for _, elem := range data {
-		if elem > max {
-			max = elem
+		if elem.value > max {
+			max = elem.value
 		}
 	}
 
