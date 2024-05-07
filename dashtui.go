@@ -118,10 +118,9 @@ func (b *Builder) Build() (*DashTUI, error) {
 						charts[id] = c
 					}
 
-					_, _, width, _ := c.GetInnerRect()
+					_, _, width, _ := c.GetPlotRect()
 
-					axisWidth := calcAxisWidth(data)
-					numPoints := width - axisWidth
+					numPoints := width
 
 					plotData := make([][]float64, 1)
 					plotData[0] = make([]float64, len(data))
@@ -164,23 +163,6 @@ func (dt *DashTUI) Set(id string, value float64) {
 
 func openLogFile(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-}
-
-func calcAxisWidth(data []datum) int {
-	max := 0.0
-	for _, elem := range data {
-		if elem.value > max {
-			max = elem.value
-		}
-	}
-
-	if max >= 100.0 {
-		return 6
-	} else if max >= 10.0 {
-		return 5
-	} else {
-		return 4
-	}
 }
 
 func getPoints(data []datum, numPoints int, timeWindow time.Duration) []float64 {
