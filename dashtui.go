@@ -3,6 +3,7 @@ package dashtui
 import (
 	"log"
 	"os"
+	"runtime"
 	"time"
 
 	//"github.com/gdamore/tcell/v2"
@@ -147,6 +148,14 @@ func (b *Builder) Build() (*DashTUI, error) {
 	d := &DashTUI{
 		queue: queue,
 	}
+
+	go func() {
+		for {
+			d.Set("goroutines", float64(runtime.NumGoroutine()))
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
 	return d, nil
 }
 
