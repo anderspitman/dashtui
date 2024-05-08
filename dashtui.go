@@ -158,7 +158,11 @@ func (b *Builder) Build() (*DashTUI, error) {
 	}
 
 	go func() {
+		m := runtime.MemStats{}
 		for {
+			runtime.ReadMemStats(&m)
+
+			d.Set("memory MiB/s", float64(m.HeapAlloc/1024/1024))
 			d.Set("goroutines", float64(runtime.NumGoroutine()))
 			time.Sleep(100 * time.Millisecond)
 		}
