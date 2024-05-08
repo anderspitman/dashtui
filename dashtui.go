@@ -68,8 +68,10 @@ func (b *Builder) Build() (*DashTUI, error) {
 	allData := make(map[string][]datum)
 	charts := make(map[string]*tvxwidgets.Plot)
 
-	maxLen := 256
+	maxLen := 1024
 	timeWindow := 10 * time.Second
+	// 60fps
+	samplePeriod := 16667 * time.Microsecond
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 
@@ -91,17 +93,23 @@ func (b *Builder) Build() (*DashTUI, error) {
 							timestamp: now,
 						}
 					}
+
+					allData[it.id] = data
 				}
 
-				data = append(data, datum{
-					value:     it.value,
-					timestamp: now,
-				})
-				if len(data) > maxLen {
-					data = data[len(data)-maxLen:]
-				}
+				timeSinceLastSample := now.Sub(data[len(data)-1].timestamp)
+				if timeSinceLastSample >= samplePeriod {
 
-				allData[it.id] = data
+					data = append(data, datum{
+						value:     it.value,
+						timestamp: now,
+					})
+					if len(data) > maxLen {
+						data = data[len(data)-maxLen:]
+					}
+
+					allData[it.id] = data
+				}
 			case <-ticker.C:
 				for id, data := range allData {
 					c, exists := charts[id]
@@ -203,12 +211,21 @@ func samplePoints(data []datum, numPoints int, timeWindow time.Duration, startTi
 	stepStart := startTime
 	stepEnd := startTime.Add(timeStep)
 
-	lastValue := 0.0
+	// Find the last value before startTime
+	lastValueIdx := 0
+	for i := len(data) - 1; i >= 0; i-- {
+		if data[i].timestamp.Before(startTime) {
+			lastValueIdx = i
+			break
+		}
+	}
+
+	lastValue := data[lastValueIdx].value
 	for i := range points {
 
 		found := false
 
-		for _, d := range data {
+		for _, d := range data[lastValueIdx:] {
 			if d.timestamp.After(stepStart) && d.timestamp.Before(stepEnd) {
 				points[i] = d.value
 				lastValue = d.value
