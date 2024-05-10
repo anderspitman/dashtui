@@ -1,6 +1,7 @@
 package dashtui
 
 import (
+	"io"
 	"log"
 	"os"
 	"runtime"
@@ -48,22 +49,60 @@ func (b *Builder) Build() (*DashTUI, error) {
 
 	app := tview.NewApplication()
 
-	stdoutFile, err := openLogFile("stdout.txt")
-	if err != nil {
-		return nil, err
-	}
-	os.Stdout = stdoutFile
+	//stdoutFile, err := openLogFile("stdout.txt")
+	//if err != nil {
+	//	return nil, err
+	//}
+	//os.Stdout = stdoutFile
 
-	stderrFile, err := openLogFile("stderr.txt")
+	//stderrFile, err := openLogFile("stderr.txt")
+	//if err != nil {
+	//	return nil, err
+	//}
+	//os.Stderr = stderrFile
+	//log.Default().SetOutput(stderrFile)
+
+	makeTextView := func(label string) (*tview.TextView, *os.File, error) {
+		text := tview.NewTextView().
+			SetScrollable(false).
+			SetChangedFunc(func() {
+				app.Draw()
+			})
+		text.
+			SetTitle(label).
+			SetBorder(true).
+			SetFocusFunc(func() {
+				log.Println("selected", label)
+			})
+
+		pipeR, pipeW, err := os.Pipe()
+		if err != nil {
+			return nil, nil, err
+		}
+		go io.Copy(text, pipeR)
+
+		return text, pipeW, nil
+	}
+
+	stdoutText, stdoutW, err := makeTextView("stdout")
 	if err != nil {
 		return nil, err
 	}
-	os.Stderr = stderrFile
-	log.Default().SetOutput(stderrFile)
+	os.Stdout = stdoutW
+
+	stderrText, stderrW, err := makeTextView("stderr")
+	if err != nil {
+		return nil, err
+	}
+	os.Stderr = stderrW
+	log.Default().SetOutput(stderrW)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow)
 
 	layout.SetFullScreen(true)
+
+	layout.AddItem(stdoutText, 0, 1, true)
+	layout.AddItem(stderrText, 0, 1, true)
 
 	allData := make(map[string][]datum)
 	charts := make(map[string]*tvxwidgets.Plot)
