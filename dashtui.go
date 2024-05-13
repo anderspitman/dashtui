@@ -17,7 +17,8 @@ type Builder struct {
 }
 
 type DashTUI struct {
-	queue chan item
+	queue    chan item
+	disabled bool
 }
 
 type item struct {
@@ -44,7 +45,9 @@ func (b *Builder) Disable() *Builder {
 
 func (b *Builder) Build() (*DashTUI, error) {
 	if b.disabled {
-		return &DashTUI{}, nil
+		return &DashTUI{
+			disabled: true,
+		}, nil
 	}
 
 	app := tview.NewApplication()
@@ -215,6 +218,10 @@ func (dt *DashTUI) Close() {
 }
 
 func (dt *DashTUI) Set(id string, value float64) {
+	if dt.disabled {
+		return
+	}
+
 	dt.queue <- item{
 		id,
 		value,
