@@ -13,7 +13,8 @@ import (
 )
 
 type Builder struct {
-	disabled bool
+	disabled      bool
+	displayPeriod time.Duration
 }
 
 type DashTUI struct {
@@ -33,13 +34,20 @@ type datum struct {
 
 func NewBuilder() *Builder {
 
-	b := &Builder{}
+	b := &Builder{
+		displayPeriod: 100 * time.Millisecond,
+	}
 
 	return b
 }
 
-func (b *Builder) Disable() *Builder {
-	b.disabled = true
+func (b *Builder) Disable(disabled bool) *Builder {
+	b.disabled = disabled
+	return b
+}
+
+func (b *Builder) DisplayPeriod(period time.Duration) *Builder {
+	b.displayPeriod = period
 	return b
 }
 
@@ -115,7 +123,7 @@ func (b *Builder) Build() (*DashTUI, error) {
 	// 60fps
 	samplePeriod := 16667 * time.Microsecond
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(b.displayPeriod)
 
 	queue := make(chan item)
 	go func() {
